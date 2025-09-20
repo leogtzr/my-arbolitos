@@ -1,0 +1,13 @@
+[package]
+name = "my-arbolitos"  # Asegúrate que coincida con el nombre del binario en Dockerfile
+version = "0.1.0"
+edition = "2021"  # O "2024" si usaste nightly; asumo 2021 para estabilidad
+
+[dependencies]
+mongodb = "3.3.0"  # Última versión estable, sin feature tokio-runtime
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.0", features = ["full"] }
+chrono = { version = "0.4", features = ["serde"] }  # Para fechas
+anyhow = "1.0"  # Opcional, para manejo de errores en CLI
+clap = { version = "4.0", features = ["derive"] }  # Para parsing de argumentos
+futures-util = "0.3.31"  # Añadido para TryStreamExt
