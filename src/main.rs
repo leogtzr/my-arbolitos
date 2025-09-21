@@ -1,9 +1,7 @@
 use mongodb::{Client, options::ClientOptions, bson::doc};
 use anyhow::Result;
 use clap::Parser;
-use mongodb::bson::oid::ObjectId;
 use std::time::Duration;
-use futures_util::stream::TryStreamExt; // Para try_next
 mod cli;
 mod db;
 mod models;
@@ -13,6 +11,7 @@ use cli::{Cli, Commands};
 use crate::db::add_plant;
 use crate::db::remove_plant;
 use crate::db::update_plant;
+use crate::db::view_plant;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -49,75 +48,8 @@ async fn main() -> Result<()> {
     
     match cli.command {
         Commands::View { search_param, id, ids } => {
-            let filter = match (search_param, id) {
-                (Some(param), None) => {
-                    doc! { "$or": [
-                        { "tags": { "$regex": &param, "$options": "i" } },
-                        { "species": { "$regex": &param, "$options": "i" } }
-                    ]}
-                }
-                (None, Some(id)) => {
-                    let oid = match ObjectId::parse_str(&id) {
-                        Ok(oid) => oid,
-                        Err(e) => {
-                            eprintln!("Error: ID inválido '{}': {}", id, e);
-                            return Err(e.into());
-                        }
-                    };
-                    doc! { "_id": oid }
-                }
-                (None, None) => doc! {},
-                (Some(_), Some(_)) => {
-                    eprintln!("Error: No puedes usar search_param e id juntos");
-                    return Err(anyhow::anyhow!("No puedes usar search_param e id juntos"));
-                }
-            };
-
-            let mut cursor = match collection.find(filter).await {
-                Ok(cursor) => cursor,
-                Err(e) => {
-                    eprintln!("Error al buscar plantas: {}", e);
-                    return Err(e.into());
-                }
-            };
-            let mut found = false;
-            while let Some(plant) = cursor.try_next().await? {
-                found = true;
-
-                if ids {
-                    println!("{}, '{}'", plant.id.unwrap_or_default(), plant.name);
-                } else {
-                    println!(
-                        "Name: '{}'\nEspecie: '{}'\nTags: {:?}\nNotas: {}\nID: '{}',",
-                        plant.name,
-                        plant.species,
-                        plant.tags,
-                        plant.notes,
-                        // plant.updates.len(),
-                        plant.id.unwrap_or_default(),
-                    );
-
-                    if plant.updates.is_empty() {
-                        println!("Updates: Ninguno")
-                    } else {
-                        for (i, update) in plant.updates.iter().enumerate() {
-                            println!(
-                                "  Update {}:\n    Fecha: {}\n    Altura: {} cm\n    Imagen: {}\n    Comentario: '{}'",
-                                i + 1,
-                                update.date.to_rfc3339(),
-                                update.height_cm,
-                                update.image_url,
-                                update.comment
-                            );
-                        }
-                    }
-                    println!();
-                }
-            }
-
-            if !found {
-                println!("No se encontraron plantas");
-            }
+            view_plant(&collection, search_param, id, ids)
+                .await?;
         }
         Commands::Add(args) => {
             let inserted_id = add_plant(&collection, args.name, args.species, args.tags, args.notes)
