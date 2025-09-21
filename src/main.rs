@@ -5,10 +5,14 @@ use mongodb::bson::oid::ObjectId;
 use std::time::Duration;
 use futures_util::stream::TryStreamExt; // Para try_next
 use chrono::Utc;
-mod models;
 mod cli;
+mod db;
+mod models;
 use models::{Plant, Update};
 use cli::{Cli, Commands};
+
+use crate::db::add_plant;
+use crate::db::remove_plant;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -24,7 +28,6 @@ async fn main() -> Result<()> {
         }
     };
     client_options.server_selection_timeout = Some(Duration::from_secs(10));
-    // println!("Opciones de cliente configuradas");
 
     let client = match Client::with_options(client_options) {
         Ok(client) => client,
@@ -36,14 +39,11 @@ async fn main() -> Result<()> {
 
     let db = client.database("arbolitos");
     let collection = db.collection::<Plant>("plants");
-    // println!("Conexión a MongoDB establecida, usando DB: arbolitos, colección: plants");
 
-    // Verificar conexión con un ping
     if let Err(e) = db.run_command(doc! { "ping": 1 }).await {
         eprintln!("Error al conectar con MongoDB (ping fallido): {}", e);
         return Err(e.into());
     }
-    // println!("Ping a MongoDB exitoso");
 
     let cli = Cli::parse();
     
@@ -120,24 +120,9 @@ async fn main() -> Result<()> {
             }
         }
         Commands::Add(args) => {
-            let tags: Vec<String> = args.tags.split(',').map(|s| s.trim().to_string()).collect();
-            let plant = Plant {
-                id: None,
-                name: args.name,
-                species: args.species,
-                tags,
-                notes: args.notes,
-                updates: vec![],
-                created_at: Utc::now(),
-            };
-            let result = match collection.insert_one(plant).await {
-                Ok(result) => result,
-                Err(e) => {
-                    eprintln!("Error al agregar planta: {}", e);
-                    return Err(e.into());
-                }
-            };
-            println!("Planta agregada, ID: {}", result.inserted_id.as_object_id().unwrap());
+            let inserted_id = add_plant(&collection, args.name, args.species, args.tags, args.notes)
+                .await?;
+            println!("Planta agregada, ID: {}", inserted_id);
         }
         Commands::Update(args) => {
             let oid = match ObjectId::parse_str(&args.id) {
@@ -186,25 +171,8 @@ async fn main() -> Result<()> {
             }
         }
         Commands::Remove { id } => {
-            let oid = match ObjectId::parse_str(&id) {
-                Ok(oid) => oid,
-                Err(e) => {
-                    eprintln!("Error: ID inválido '{}': {}", id, e);
-                    return Err(e.into());
-                }
-            };
-            let result = match collection.delete_one(doc! { "_id": oid }).await {
-                Ok(result) => result,
-                Err(e) => {
-                    eprintln!("Error al remover planta: {}", e);
-                    return Err(e.into());
-                }
-            };
-            if result.deleted_count > 0 {
-                println!("Planta ID {} removida", id);
-            } else {
-                println!("No se encontró planta con ID {}", id);
-            }
+            remove_plant(&collection, &id).await?;
+            println!("Planta con ID: {} removida.", id);        
         }
     }
 
