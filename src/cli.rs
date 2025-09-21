@@ -73,4 +73,7 @@ pub struct UpdateArgs {
     /// Nueva actualización: comentario (opcional)
     #[arg(long)]
     pub comment: Option<String>,
+
+    #[arg(long)]
+    pub species: Option<String>
 }

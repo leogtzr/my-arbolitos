@@ -4,15 +4,15 @@ use clap::Parser;
 use mongodb::bson::oid::ObjectId;
 use std::time::Duration;
 use futures_util::stream::TryStreamExt; // Para try_next
-use chrono::Utc;
 mod cli;
 mod db;
 mod models;
-use models::{Plant, Update};
+use models::{Plant};
 use cli::{Cli, Commands};
 
 use crate::db::add_plant;
 use crate::db::remove_plant;
+use crate::db::update_plant;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -125,50 +125,9 @@ async fn main() -> Result<()> {
             println!("Planta agregada, ID: {}", inserted_id);
         }
         Commands::Update(args) => {
-            let oid = match ObjectId::parse_str(&args.id) {
-                Ok(oid) => oid,
-                Err(e) => {
-                    eprintln!("Error: ID inválido '{}': {}", args.id, e);
-                    return Err(e.into());
-                }
-            };
-
-            let mut update_ops = doc! {};
-            let mut set_ops = doc! {};
-
-            if let Some(name) = args.name {
-                set_ops.insert("name", name);
-            }
-            if !set_ops.is_empty() {
-                update_ops.insert("$set", set_ops);
-            }
-            if let Some(tag) = args.add_tag {
-                update_ops.insert("$push", doc! { "tags": tag });
-            }
-            if let Some(tag) = args.remove_tag {
-                update_ops.insert("$pull", doc! { "tags": tag });
-            }
-            if args.height_cm.is_some() || args.image_url.is_some() || args.comment.is_some() {
-                let update = Update {
-                    date: Utc::now(),
-                    height_cm: args.height_cm.unwrap_or(0.0),
-                    image_url: args.image_url.unwrap_or_default(),
-                    comment: args.comment.unwrap_or_default(),
-                };
-                update_ops.insert("$push", doc! { "updates": mongodb::bson::to_bson(&update)? });
-            }
-
-            if !update_ops.is_empty() {
-                match collection.update_one(doc! { "_id": oid }, update_ops).await {
-                    Ok(_) => println!("Planta ID {} actualizada", args.id),
-                    Err(e) => {
-                        eprintln!("Error al actualizar planta: {}", e);
-                        return Err(e.into());
-                    }
-                }
-            } else {
-                println!("No se proporcionaron cambios para actualizar");
-            }
+            update_plant(&collection, &args)
+                .await?;
+            println!("Updated ... ");
         }
         Commands::Remove { id } => {
             remove_plant(&collection, &id).await?;
